@@ -1,6 +1,6 @@
 /**
  * video-renderer.js
- * In-browser HTML5 Canvas Slide & Subtitle Renderer + MediaRecorder Video Exporter
+ * Robust HTML5 Canvas Slide & Subtitle Renderer + MediaRecorder Video Exporter
  */
 
 class VideoRenderer {
@@ -10,6 +10,7 @@ class VideoRenderer {
     this.isRendering = false;
     this.currentBlob = null;
     this.currentUrl = null;
+    this.lastExtension = 'mp4';
   }
 
   setDimensions(aspectRatio = '1:1') {
@@ -41,14 +42,22 @@ class VideoRenderer {
   }
 
   /**
-   * Preload an image from URL or dataURL
+   * Preload an image from URL or dataURL safely without tainting canvas
    */
   async loadImage(src) {
     return new Promise((resolve, reject) => {
+      if (!src) {
+        return reject(new Error("이미지 경로가 비어 있습니다."));
+      }
+
       const img = new Image();
-      img.crossOrigin = 'anonymous';
+      // ONLY set crossOrigin on external HTTP/HTTPS URLs
+      if (typeof src === 'string' && (src.startsWith('http://') || src.startsWith('https://'))) {
+        img.crossOrigin = 'anonymous';
+      }
+
       img.onload = () => resolve(img);
-      img.onerror = (e) => reject(e);
+      img.onerror = () => reject(new Error("카드 이미지를 불러오는 데 실패했습니다."));
       img.src = src;
     });
   }
@@ -68,36 +77,40 @@ class VideoRenderer {
       ctx.translate(offsetX, 0);
     }
 
-    // 1. Clear background
+    // 1. Base dark background
     ctx.fillStyle = '#090d16';
     ctx.fillRect(0, 0, w, h);
 
-    // 2. Draw Image (Contain with letterbox or Fill)
+    // 2. Draw Image (Contain with letterbox or subtle blur backdrop)
     if (img) {
-      // Blurred backdrop if aspect ratio differs
-      ctx.save();
-      ctx.filter = 'blur(20px) brightness(0.4)';
-      ctx.drawImage(img, -20, -20, w + 40, h + 40);
-      ctx.restore();
+      try {
+        // Blurred backdrop
+        ctx.save();
+        ctx.filter = 'blur(24px) brightness(0.35)';
+        ctx.drawImage(img, -20, -20, w + 40, h + 40);
+        ctx.restore();
 
-      // Sharp main image centered
-      const imgRatio = img.width / img.height;
-      const canvasRatio = w / h;
-      let drawW, drawH, drawX, drawY;
+        // Sharp main image centered
+        const imgRatio = (img.width || 1) / (img.height || 1);
+        const canvasRatio = w / h;
+        let drawW, drawH, drawX, drawY;
 
-      if (imgRatio > canvasRatio) {
-        drawW = w;
-        drawH = w / imgRatio;
-        drawX = 0;
-        drawY = (h - drawH) / 2;
-      } else {
-        drawH = h;
-        drawW = h * imgRatio;
-        drawX = (w - drawW) / 2;
-        drawY = 0;
+        if (imgRatio > canvasRatio) {
+          drawW = w;
+          drawH = w / imgRatio;
+          drawX = 0;
+          drawY = (h - drawH) / 2;
+        } else {
+          drawH = h;
+          drawW = h * imgRatio;
+          drawX = (w - drawW) / 2;
+          drawY = 0;
+        }
+
+        ctx.drawImage(img, drawX, drawY, drawW, drawH);
+      } catch (err) {
+        console.warn("Frame draw image warning:", err);
       }
-
-      ctx.drawImage(img, drawX, drawY, drawW, drawH);
     }
 
     // 3. Draw Subtitles if enabled
@@ -117,13 +130,12 @@ class VideoRenderer {
     const ctx = this.ctx;
     const style = options.style || 'bottom-bar';
 
-    const fontSize = Math.round(w * 0.038); // Responsive font size ~40px on 1080p
+    const fontSize = Math.round(w * 0.038); // Responsive font size
     const lineHeight = fontSize * 1.45;
     ctx.font = `700 ${fontSize}px Pretendard, 'Noto Sans KR', sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
-    // Wrap text into lines
     const maxTextWidth = w * 0.82;
     const lines = this.wrapKoreanText(text, maxTextWidth, ctx);
     const totalBoxHeight = lines.length * lineHeight + fontSize * 1.2;
@@ -135,27 +147,24 @@ class VideoRenderer {
     }
 
     if (style === 'bottom-bar' || style === 'top-bar') {
-      // Full/Semi wide dark bar
-      ctx.fillStyle = 'rgba(10, 15, 29, 0.82)';
+      // Semi-transparent bar
+      ctx.fillStyle = 'rgba(10, 15, 29, 0.84)';
       ctx.fillRect(w * 0.05, boxY, w * 0.9, totalBoxHeight);
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
       ctx.lineWidth = 2;
       ctx.strokeRect(w * 0.05, boxY, w * 0.9, totalBoxHeight);
     } else if (style === 'floating-pill') {
-      // Rounded pill
-      const pillRadius = totalBoxHeight / 2;
       this.roundRect(ctx, w * 0.08, boxY, w * 0.84, totalBoxHeight, 20);
-      ctx.fillStyle = 'rgba(15, 23, 42, 0.88)';
+      ctx.fillStyle = 'rgba(15, 23, 42, 0.90)';
       ctx.fill();
-      ctx.strokeStyle = 'rgba(34, 197, 94, 0.5)';
+      ctx.strokeStyle = 'rgba(34, 197, 94, 0.6)';
       ctx.lineWidth = 3;
       ctx.stroke();
     }
 
-    // Render Text Lines
     lines.forEach((line, idx) => {
       const lineY = boxY + (fontSize * 0.9) + (idx * lineHeight) + (fontSize * 0.2);
-      
+
       if (style === 'text-shadow') {
         ctx.shadowColor = 'rgba(0, 0, 0, 0.95)';
         ctx.shadowBlur = 12;
@@ -173,9 +182,6 @@ class VideoRenderer {
     ctx.shadowBlur = 0;
   }
 
-  /**
-   * Helper: Wrap Korean text by words cleanly
-   */
   wrapKoreanText(text, maxWidth, ctx) {
     const words = text.split(' ');
     const lines = [];
@@ -212,6 +218,31 @@ class VideoRenderer {
   }
 
   /**
+   * Determine best supported MediaRecorder MIME type
+   */
+  getBestMimeType() {
+    const types = [
+      'video/webm;codecs=vp9,opus',
+      'video/webm;codecs=vp8,opus',
+      'video/webm;codecs=h264,opus',
+      'video/webm',
+      'video/mp4;codecs=avc1,mp4a',
+      'video/mp4'
+    ];
+
+    if (typeof MediaRecorder === 'undefined') {
+      throw new Error("현재 브라우저는 MediaRecorder API를 지원하지 않습니다. Chrome 또는 Edge 브라우저를 권장합니다.");
+    }
+
+    for (const t of types) {
+      if (MediaRecorder.isTypeSupported(t)) {
+        return t;
+      }
+    }
+    return '';
+  }
+
+  /**
    * Main Video Render Pipeline
    */
   async renderVideo(cards, settings, progressCallback) {
@@ -221,24 +252,40 @@ class VideoRenderer {
     try {
       this.setDimensions(settings.aspectRatio);
 
-      if (progressCallback) progressCallback(5, "카드 이미지 리소스 로딩 중...", "이미지 디코딩 및 검증");
+      if (progressCallback) progressCallback(5, "카드 이미지 리소스 로딩 중...", "이미지 유효성 검사");
 
       // 1. Preload all card images
       const loadedImages = [];
       for (let i = 0; i < cards.length; i++) {
-        const img = await this.loadImage(cards[i].imageUrl);
-        loadedImages.push(img);
+        try {
+          const img = await this.loadImage(cards[i].imageUrl);
+          loadedImages.push(img);
+        } catch (imgErr) {
+          console.error(`카드 ${i + 1} 이미지 로드 실패:`, imgErr);
+          throw new Error(`카드 ${i + 1}번 이미지를 로드할 수 없습니다: ${cards[i].title || '이미지 오류'}`);
+        }
       }
 
       // 2. Setup Audio Engine & Web Audio Destination
       const audioCtx = window.ttsEngine.getAudioContext();
+      if (audioCtx.state === 'suspended') {
+        await audioCtx.resume();
+      }
+
       const dest = audioCtx.createMediaStreamDestination();
+
+      // Keep audio stream active with continuous silence carrier node
+      const silenceOsc = audioCtx.createOscillator();
+      const silenceGain = audioCtx.createGain();
+      silenceGain.gain.value = 0.0001; // virtually silent carrier
+      silenceOsc.connect(silenceGain);
+      silenceGain.connect(dest);
+      silenceOsc.start();
 
       // Setup BGM
       let bgmNode = null;
       let totalEstimatedDuration = 0;
 
-      // Calculate timeline for each card
       const timeline = [];
       const pauseDuration = settings.cardPause || 0.8;
       const rate = settings.speechRate || 1.0;
@@ -259,7 +306,7 @@ class VideoRenderer {
       });
 
       if (settings.bgmType && settings.bgmType !== 'none') {
-        const bgmBuffer = window.ttsEngine.createProceduralBgm(settings.bgmType, Math.ceil(totalEstimatedDuration + 3));
+        const bgmBuffer = window.ttsEngine.createProceduralBgm(settings.bgmType, Math.ceil(totalEstimatedDuration + 4));
         bgmNode = audioCtx.createBufferSource();
         bgmNode.buffer = bgmBuffer;
 
@@ -271,29 +318,36 @@ class VideoRenderer {
 
       // 3. Setup Canvas Capture Stream & MediaRecorder
       const fps = 30;
-      const videoStream = this.canvas.captureStream(fps);
-      const combinedStream = new MediaStream([
-        ...videoStream.getVideoTracks(),
-        ...dest.stream.getAudioTracks()
-      ]);
-
-      // Choose supported mimeType
-      let mimeType = 'video/webm;codecs=vp9,opus';
-      if (MediaRecorder.isTypeSupported('video/mp4;codecs=avc1,mp4a')) {
-        mimeType = 'video/mp4;codecs=avc1,mp4a';
-      } else if (MediaRecorder.isTypeSupported('video/mp4')) {
-        mimeType = 'video/mp4';
-      } else if (MediaRecorder.isTypeSupported('video/webm;codecs=h264,opus')) {
-        mimeType = 'video/webm;codecs=h264,opus';
-      } else if (MediaRecorder.isTypeSupported('video/webm')) {
-        mimeType = 'video/webm';
+      let videoStream;
+      try {
+        videoStream = this.canvas.captureStream(fps);
+      } catch (streamErr) {
+        throw new Error("캔버스 화면 캡처에 실패했습니다 (CORS 보안 제약): " + streamErr.message);
       }
 
+      const audioTracks = dest.stream.getAudioTracks();
+      const tracks = [...videoStream.getVideoTracks()];
+      if (audioTracks.length > 0) {
+        tracks.push(audioTracks[0]);
+      }
+
+      const combinedStream = new MediaStream(tracks);
+
+      // Safe MediaRecorder Initialization with MIME fallback
+      const chosenMime = this.getBestMimeType();
       const recordedChunks = [];
-      const recorder = new MediaRecorder(combinedStream, {
-        mimeType: mimeType,
-        videoBitsPerSecond: 6000000 // 6 Mbps high quality
-      });
+      let recorder;
+
+      const recorderOptions = chosenMime ? { mimeType: chosenMime, videoBitsPerSecond: 5000000 } : {};
+
+      try {
+        recorder = new MediaRecorder(combinedStream, recorderOptions);
+      } catch (recInitErr) {
+        console.warn("Preferred mimeType failed, falling back to default:", recInitErr);
+        recorder = new MediaRecorder(combinedStream);
+      }
+
+      const actualMime = recorder.mimeType || chosenMime || 'video/webm';
 
       recorder.ondataavailable = (e) => {
         if (e.data && e.data.size > 0) {
@@ -303,30 +357,37 @@ class VideoRenderer {
 
       const renderPromise = new Promise((resolve, reject) => {
         recorder.onstop = () => {
-          const extension = mimeType.includes('mp4') ? 'mp4' : 'webm';
-          const blob = new Blob(recordedChunks, { type: mimeType });
-          this.currentBlob = blob;
-          if (this.currentUrl) URL.revokeObjectURL(this.currentUrl);
-          this.currentUrl = URL.createObjectURL(blob);
-          resolve({ blob, url: this.currentUrl, extension });
+          try {
+            const isMp4 = actualMime.toLowerCase().includes('mp4');
+            const extension = isMp4 ? 'mp4' : 'webm';
+            const blob = new Blob(recordedChunks, { type: actualMime });
+            this.currentBlob = blob;
+            if (this.currentUrl) URL.revokeObjectURL(this.currentUrl);
+            this.currentUrl = URL.createObjectURL(blob);
+            this.lastExtension = extension;
+            resolve({ blob, url: this.currentUrl, extension });
+          } catch (blobErr) {
+            reject(new Error("동영상 파일 변환 실패: " + blobErr.message));
+          }
         };
-        recorder.onerror = (e) => reject(e);
+
+        recorder.onerror = (e) => {
+          const errObj = e.error || new Error(e.message || "동영상 녹화 장치(MediaRecorder) 오류가 발생했습니다.");
+          reject(errObj);
+        };
       });
 
       // Start Recording
       recorder.start(100);
       if (bgmNode) {
-        bgmNode.start();
+        try { bgmNode.start(); } catch (e) {}
       }
 
-      // 4. Play through timeline & render frames
+      // 4. Render timeline loop
       const subtitleOpts = {
         enabled: settings.showSubtitles !== false,
         style: settings.subtitleStyle || 'bottom-bar'
       };
-
-      let currentTimelineIdx = 0;
-      const startTime = performance.now();
 
       const runRenderLoop = async () => {
         for (let i = 0; i < timeline.length; i++) {
@@ -335,53 +396,51 @@ class VideoRenderer {
           const nextSegment = (i + 1 < timeline.length) ? timeline[i + 1] : null;
 
           if (progressCallback) {
-            const pct = Math.round(((i) / timeline.length) * 85) + 10;
-            progressCallback(pct, `카드 ${i + 1}/${timeline.length} 렌더링 중`, card.title || card.script.slice(0, 20));
+            const pct = Math.round((i / timeline.length) * 85) + 10;
+            progressCallback(pct, `카드 ${i + 1}/${timeline.length} 렌더링 중`, card.title || card.script.slice(0, 25));
           }
 
-          // Trigger speech in parallel
+          // Trigger speech preview concurrently
           window.ttsEngine.speak(card.script, rate);
 
-          // Render card frames across duration
+          // Play transition chime tone on card change
+          window.ttsEngine.playChime(dest);
+
+          // Frame animation loop
           const segmentStartTime = performance.now();
           const targetDurationMs = segment.totalDuration * 1000;
-          const transitionDurMs = settings.transitionStyle === 'cut' ? 0 : 400; // 0.4s transition
+          const transitionDurMs = settings.transitionStyle === 'cut' ? 0 : 400;
 
           while (performance.now() - segmentStartTime < targetDurationMs) {
             const elapsed = performance.now() - segmentStartTime;
             const remaining = targetDurationMs - elapsed;
 
             if (remaining < transitionDurMs && nextSegment && settings.transitionStyle === 'fade') {
-              // Cross fade
               const t = 1.0 - (remaining / transitionDurMs);
               this.drawCardFrame(segment.image, card.script, subtitleOpts, 1.0);
               this.drawCardFrame(nextSegment.image, nextSegment.card.script, subtitleOpts, t);
             } else if (remaining < transitionDurMs && nextSegment && settings.transitionStyle === 'slide') {
-              // Slide transition
               const t = 1.0 - (remaining / transitionDurMs);
               const offset = -t * this.canvas.width;
               this.drawCardFrame(segment.image, card.script, subtitleOpts, 1.0, offset);
               this.drawCardFrame(nextSegment.image, nextSegment.card.script, subtitleOpts, 1.0, offset + this.canvas.width);
             } else {
-              // Normal static display
               this.drawCardFrame(segment.image, card.script, subtitleOpts, 1.0);
             }
 
-            // Wait 1 frame (approx 33ms)
             await new Promise(r => setTimeout(r, 33));
           }
         }
 
-        // Finish
-        if (progressCallback) progressCallback(96, "동영상 파일 인코딩 마무리 중...", "MP4 파일 생성 중");
-        
-        // Stop audio & recorder
+        if (progressCallback) progressCallback(96, "동영상 파일 패키징 중...", "고화질 비디오 완성");
+
         window.ttsEngine.stop();
         if (bgmNode) {
-          try { bgmNode.stop(); } catch(e) {}
+          try { bgmNode.stop(); } catch (e) {}
         }
-        
-        await new Promise(r => setTimeout(r, 500));
+        try { silenceOsc.stop(); } catch (e) {}
+
+        await new Promise(r => setTimeout(r, 400));
         recorder.stop();
       };
 
@@ -393,7 +452,7 @@ class VideoRenderer {
     } catch (err) {
       this.isRendering = false;
       window.ttsEngine.stop();
-      console.error("Rendering error:", err);
+      console.error("Video Render Error:", err);
       throw err;
     }
   }

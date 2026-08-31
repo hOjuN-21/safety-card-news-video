@@ -23,14 +23,12 @@ class SafetyCardApp {
   }
 
   initElements() {
-    // DOM Elements
     this.dropZone = document.getElementById('drop-zone');
     this.fileInput = document.getElementById('file-input');
     this.cardsContainer = document.getElementById('cards-container');
     this.cardCountBadge = document.getElementById('card-count-badge');
     this.btnClearAll = document.getElementById('btn-clear-all');
 
-    // Controls
     this.voiceSelect = document.getElementById('voice-select');
     this.btnTestVoice = document.getElementById('btn-test-voice');
     this.speechRateInput = document.getElementById('speech-rate');
@@ -46,7 +44,6 @@ class SafetyCardApp {
     this.bgmVolVal = document.getElementById('bgm-vol-val');
     this.customBgmFileInput = document.getElementById('custom-bgm-file');
 
-    // Preview & Render
     this.previewCanvas = document.getElementById('preview-canvas');
     this.resultVideo = document.getElementById('result-video');
     this.previewPlaceholder = document.getElementById('preview-placeholder');
@@ -64,7 +61,6 @@ class SafetyCardApp {
     this.btnStartRender = document.getElementById('btn-start-render');
     this.btnDownloadVideo = document.getElementById('btn-download-video');
 
-    // Top actions
     this.btnLoadSample = document.getElementById('btn-load-sample');
     this.btnLoadSampleInline = document.getElementById('btn-load-sample-inline');
     this.btnSaveProject = document.getElementById('btn-save-project');
@@ -81,7 +77,6 @@ class SafetyCardApp {
   }
 
   initEvents() {
-    // 1. File Upload & Drag-and-drop
     this.dropZone.addEventListener('click', () => this.fileInput.click());
     this.fileInput.addEventListener('change', (e) => this.handleFiles(e.target.files));
 
@@ -106,7 +101,6 @@ class SafetyCardApp {
       this.handleFiles(files);
     });
 
-    // 2. Clear all
     this.btnClearAll.addEventListener('click', () => {
       if (confirm('모든 카드를 삭제하시겠습니까?')) {
         this.cards = [];
@@ -115,7 +109,6 @@ class SafetyCardApp {
       }
     });
 
-    // 3. Sliders & Inputs
     this.speechRateInput.addEventListener('input', (e) => {
       this.rateVal.textContent = `${parseFloat(e.target.value).toFixed(2)}x`;
       this.updateAllCardDurations();
@@ -146,7 +139,6 @@ class SafetyCardApp {
     this.subtitleToggle.addEventListener('change', () => this.updatePreviewCanvas());
     this.subtitleStyleSelect.addEventListener('change', () => this.updatePreviewCanvas());
 
-    // 4. Slide Preview Navigation
     this.btnPrevCard.addEventListener('click', () => {
       if (this.currentPreviewIndex > 0) {
         this.currentPreviewIndex--;
@@ -167,32 +159,28 @@ class SafetyCardApp {
       window.ttsEngine.speak(card.script, parseFloat(this.speechRateInput.value));
     });
 
-    // 5. Render Video
     this.btnStartRender.addEventListener('click', () => this.startRendering());
 
-    // 6. Download Video
     this.btnDownloadVideo.addEventListener('click', () => {
       if (!this.videoRenderer.currentUrl) return;
       const a = document.createElement('a');
       a.href = this.videoRenderer.currentUrl;
       const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-      a.download = `안전카드뉴스_동영상_${today}.${this.videoRenderer.lastExtension || 'mp4'}`;
+      const ext = this.videoRenderer.lastExtension || 'mp4';
+      a.download = `안전카드뉴스_동영상_${today}.${ext}`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
     });
 
-    // 7. Sample Templates
     this.btnLoadSample.addEventListener('click', () => this.loadSampleTemplate('confinedSpace'));
     if (this.btnLoadSampleInline) {
       this.btnLoadSampleInline.addEventListener('click', () => this.loadSampleTemplate('confinedSpace'));
     }
 
-    // 8. Project Save & Load
     this.btnSaveProject.addEventListener('click', () => this.saveProject());
     this.inputLoadProject.addEventListener('change', (e) => this.loadProject(e.target.files[0]));
 
-    // 9. Help Modal
     this.btnHelpModal.addEventListener('click', () => this.helpModal.classList.remove('hidden'));
     this.btnCloseHelp.addEventListener('click', () => this.helpModal.classList.add('hidden'));
     this.btnConfirmHelp.addEventListener('click', () => this.helpModal.classList.add('hidden'));
@@ -203,9 +191,6 @@ class SafetyCardApp {
     this.videoRenderer.setDimensions(ratio);
   }
 
-  /**
-   * Handle multiple uploaded image files
-   */
   async handleFiles(files) {
     if (!files || files.length === 0) return;
 
@@ -238,9 +223,6 @@ class SafetyCardApp {
     });
   }
 
-  /**
-   * Load Pre-baked Safety Template
-   */
   loadSampleTemplate(key = 'confinedSpace') {
     const tpl = SampleSafetyTemplates[key] || SampleSafetyTemplates.confinedSpace;
     this.cards = tpl.cards.map((c, idx) => ({
@@ -256,9 +238,6 @@ class SafetyCardApp {
     this.updatePreviewCanvas();
   }
 
-  /**
-   * Render the Cards List DOM
-   */
   renderCardsList() {
     this.cardCountBadge.textContent = `총 ${this.cards.length}장`;
 
@@ -291,7 +270,6 @@ class SafetyCardApp {
       html += `
         <div class="card-item bg-slate-950/70 border ${isSelected ? 'border-emerald-500 shadow-md shadow-emerald-500/10' : 'border-slate-800'} rounded-xl p-3.5 flex flex-col sm:flex-row gap-3.5 items-start sm:items-center relative group" data-id="${card.id}" data-index="${index}">
           
-          <!-- Drag Handle & Index Badge -->
           <div class="flex items-center gap-2">
             <span class="w-6 h-6 rounded-lg bg-slate-800 text-slate-300 font-mono font-bold text-xs flex items-center justify-center border border-slate-700">
               ${index + 1}
@@ -301,23 +279,20 @@ class SafetyCardApp {
             </div>
           </div>
 
-          <!-- Script & Title Editor -->
           <div class="flex-1 w-full space-y-1.5">
             <div class="flex items-center justify-between">
-              <input type="text" class="card-title-input text-xs font-bold text-slate-200 bg-transparent border-b border-transparent focus:border-emerald-500 focus:outline-none px-1 py-0.5 w-2/3" value="${this.escapeHtml(card.title)}" placeholder="카드 제목 (예: 1. 안전수칙 준수)" data-index="${index}">
+              <input type="text" class="card-title-input text-xs font-bold text-slate-200 bg-transparent border-b border-transparent focus:border-emerald-500 focus:outline-none px-1 py-0.5 w-2/3" value="${this.escapeHtml(card.title)}" placeholder="카드 제목" data-index="${index}">
               <div class="flex items-center gap-1 text-[11px] text-slate-400 font-mono">
                 <i data-lucide="clock" class="w-3 h-3 text-emerald-400 inline"></i>
                 <span class="card-duration-text">약 ${estSec}초</span>
               </div>
             </div>
 
-            <!-- Narration Script Textarea -->
             <div class="relative">
               <textarea rows="2" class="card-script-input w-full bg-slate-900 border border-slate-800 rounded-lg p-2 text-xs text-slate-200 focus:outline-none focus:border-emerald-500 placeholder-slate-600 transition-colors" placeholder="이 카드가 나올 때 읽어줄 나레이션 대본을 입력하세요..." data-index="${index}">${this.escapeHtml(card.script)}</textarea>
             </div>
           </div>
 
-          <!-- Action Buttons -->
           <div class="flex sm:flex-col items-center gap-1 sm:self-center">
             <button class="btn-play-card p-1.5 bg-slate-800 hover:bg-slate-700 text-emerald-400 hover:text-emerald-300 rounded-lg border border-slate-700 transition-all" title="이 카드 음성 미리듣기" data-index="${index}">
               <i data-lucide="volume-2" class="w-4 h-4"></i>
@@ -340,13 +315,11 @@ class SafetyCardApp {
     this.cardsContainer.innerHTML = html;
     lucide.createIcons();
 
-    // Bind card element events
     this.bindCardEvents();
     this.updateIndicators();
   }
 
   bindCardEvents() {
-    // Title changes
     document.querySelectorAll('.card-title-input').forEach(input => {
       input.addEventListener('input', (e) => {
         const idx = parseInt(e.target.dataset.index);
@@ -354,13 +327,11 @@ class SafetyCardApp {
       });
     });
 
-    // Script changes
     document.querySelectorAll('.card-script-input').forEach(textarea => {
       textarea.addEventListener('input', (e) => {
         const idx = parseInt(e.target.dataset.index);
         this.cards[idx].script = e.target.value;
 
-        // Update duration badge
         const rate = parseFloat(this.speechRateInput.value);
         const estSec = window.ttsEngine.estimateDuration(e.target.value, rate);
         const parent = textarea.closest('.card-item');
@@ -373,7 +344,6 @@ class SafetyCardApp {
       });
     });
 
-    // Thumbnail click to preview
     document.querySelectorAll('.card-thumb').forEach(thumb => {
       thumb.addEventListener('click', (e) => {
         const idx = parseInt(e.currentTarget.dataset.index);
@@ -383,7 +353,6 @@ class SafetyCardApp {
       });
     });
 
-    // Play TTS per card
     document.querySelectorAll('.btn-play-card').forEach(btn => {
       btn.addEventListener('click', (e) => {
         const idx = parseInt(e.currentTarget.dataset.index);
@@ -393,7 +362,6 @@ class SafetyCardApp {
       });
     });
 
-    // Move Up
     document.querySelectorAll('.btn-move-up').forEach(btn => {
       btn.addEventListener('click', (e) => {
         const idx = parseInt(e.currentTarget.dataset.index);
@@ -408,7 +376,6 @@ class SafetyCardApp {
       });
     });
 
-    // Move Down
     document.querySelectorAll('.btn-move-down').forEach(btn => {
       btn.addEventListener('click', (e) => {
         const idx = parseInt(e.currentTarget.dataset.index);
@@ -423,7 +390,6 @@ class SafetyCardApp {
       });
     });
 
-    // Delete Card
     document.querySelectorAll('.btn-delete-card').forEach(btn => {
       btn.addEventListener('click', (e) => {
         const idx = parseInt(e.currentTarget.dataset.index);
@@ -461,9 +427,6 @@ class SafetyCardApp {
     }
   }
 
-  /**
-   * Update the live canvas preview with current card
-   */
   async updatePreviewCanvas() {
     this.updateIndicators();
 
@@ -525,7 +488,6 @@ class SafetyCardApp {
         this.renderDetailText.textContent = detail;
       });
 
-      this.videoRenderer.lastExtension = result.extension;
       this.renderingOverlay.classList.add('hidden');
       this.resultVideo.src = result.url;
       this.resultVideo.classList.remove('hidden');
@@ -539,15 +501,31 @@ class SafetyCardApp {
       this.renderingOverlay.classList.add('hidden');
       this.statusTag.textContent = "오류";
       this.statusTag.className = "text-[11px] font-semibold px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-400 border border-rose-500/30";
-      alert("동영상 제작 중 오류가 발생했습니다: " + err.message);
+
+      let msg = "알 수 없는 오류가 발생했습니다.";
+      if (typeof err === 'string') {
+        msg = err;
+      } else if (err?.message) {
+        msg = err.message;
+      } else if (err?.error?.message) {
+        msg = err.error.message;
+      } else if (err?.name) {
+        msg = err.name;
+      } else {
+        try {
+          msg = JSON.stringify(err);
+        } catch(e) {
+          msg = String(err);
+        }
+      }
+
+      console.error("동영상 제작 오류 상세:", err);
+      alert("동영상 제작 중 오류가 발생했습니다:\n" + msg);
     } finally {
       this.isRendering = false;
     }
   }
 
-  /**
-   * Save Project as JSON
-   */
   saveProject() {
     const data = {
       version: "1.0",
@@ -575,9 +553,6 @@ class SafetyCardApp {
     URL.revokeObjectURL(url);
   }
 
-  /**
-   * Load Project from JSON
-   */
   loadProject(file) {
     if (!file) return;
     const reader = new FileReader();
@@ -628,7 +603,6 @@ class SafetyCardApp {
   }
 }
 
-// Instantiate app when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
   window.safetyApp = new SafetyCardApp();
 });
